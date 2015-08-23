@@ -4,8 +4,10 @@ import time
 import string
 from datetime import datetime
 
-PREFIX = "/video/HDHRViewer"
-NAME = "HDHR Viewer"
+from HDHRHelper import HDHRHelper, Tuner
+
+PREFIX = "/video/HDHRViewer Wes"
+NAME = "HDHR Viewer Wes"
 ART = "art-default.png"
 ICON = "icon-default.png"
 VERSION = "0.5"	
@@ -15,9 +17,23 @@ DURATION = 14400000			# Duration for Transcoder
 MAX_SIZE = 20971520			# [Bytes] 20971520 = 20MB Default: 5242880 (5MB)
 PAGINATION = 20				# Number of listing per page. (not used)
 
+hdhrHelper = HDHRHelper()
+
 def Start():
 	ObjectContainer.title1 = NAME
 	DirectoryItem.thumb = R(ICON)
+
+	Log.Error("WES STARTING...")
+
+	tunerList = []
+	Log.Debug("Prefs: %s" % (Prefs))
+	Log.Debug("Prefs[custom_lineup]: %s" % (Prefs['custom_lineup']))
+	Log.Debug("Prefs[hdhomerun_dual_tuner_ip_list]: %s" % (Prefs["hdhomerun_dual_tuner_ip_list"]))
+	for item in Prefs["hdhomerun_dual_tuner_ip_list"].split(' '):
+		tunerList.append(Tuner(item, 0))
+		tunerList.append(Tuner(item, 1))
+	hdhrHelper.setTunerList(tunerList)
+	Log.Debug("hdhrHelper: %s" % (hdhrHelper))
     
 @handler(PREFIX, NAME, ICON, ART)
 def MainMenu():
@@ -30,7 +46,7 @@ def MainMenu():
 	
 	#v0.4 Check IP
 	try:
-		xml_channellineup_url = "http://"+Prefs["hdhomerun_ip"]+"/lineup.xml"
+		xml_channellineup_url = "http://"+hdhrHelper.getPrimaryTunerIp()+"/lineup.xml"
 		xml_channellineup = XML.ElementFromURL(xml_channellineup_url,timeout=TIMEOUT,cacheTime=CACHETIME)
 	except:
 		xml_channellineup = None
@@ -42,7 +58,7 @@ def MainMenu():
 		if Prefs["custom_lineup_enable"]:
 			xml_channellineup = XML.ElementFromString(Resource.Load(Prefs["custom_lineup"]))
 		else:
-			xml_channellineup_url = "http://"+Prefs["hdhomerun_ip"]+"/lineup.xml"
+			xml_channellineup_url = "http://"+hdhrHelper.getPrimaryTunerIp()+"/lineup.xml"
 			xml_channellineup = XML.ElementFromURL(xml_channellineup_url,timeout=TIMEOUT,cacheTime=CACHETIME)
 	except:
 		xml_channellineup = None
@@ -88,12 +104,37 @@ def SubMenu(title,xpath,program_info):
 	if Prefs["custom_lineup_enable"]:
 		xml_channellineup = XML.ElementFromString(Resource.Load(Prefs["custom_lineup"]))
 	else:
-		xml_channellineup_url = "http://"+Prefs["hdhomerun_ip"]+"/lineup.xml"
+		xml_channellineup_url = "http://"+hdhrHelper.getPrimaryTunerIp()+"/lineup.xml"
 		xml_channellineup = XML.ElementFromURL(xml_channellineup_url,timeout=TIMEOUT,cacheTime=CACHETIME)
 	
 
 	#Get channels from lineup.xml
 	channels = xml_channellineup.xpath(xpath)
+
+	# WES #
+	#oc.add(CreateVO(url="http://172.16.1.40:5004/tuner1/v4.1", title="Title", tagline="ep_info", summary="ep_info+ep_next", thumb="Thumb"))
+        oc.add(VideoClipObject(
+                key = "http://172.16.1.40:5004/tuner1/v4.1",
+                title = "title",
+                summary = "summary",
+                #Plex.tv & Roku3
+                tagline = "tagline",
+                source_title = "tagline",
+                #without duration, transcoding will not work...
+                duration = DURATION,
+                #thumb = thumb,
+                items = [
+                        MediaObject(
+                                parts = [PartObject(key=("http://172.16.1.40:5004/tuner1/v4.1"))],
+                                container = "mpegts",
+                                video_resolution = 1080,
+                                bitrate = 20000,
+                                video_codec = "mpeg2video",
+                                audio_codec = "AC3",
+                                optimized_for_streaming = True
+                        )
+                ]
+                ))
 	
 	for element in channels:
 		GuideNumber = element.xpath("GuideNumber")[0].text
@@ -113,7 +154,14 @@ def SubMenu(title,xpath,program_info):
 			
 		Log.Debug("thumbnail:"+filename)
 	
-		StreamURL = "http://"+Prefs["hdhomerun_ip"]+":5004/"+Prefs["hdhomerun_tuner"]+"/v" + GuideNumber
+		StreamURL = "NO AVAILABLE TUNERS"
+		availableTuner = hdhrHelper.getNextStreamURL()
+		if availableTuner:
+			Log.Debug("Found available tuner: %s" % availableTuner)
+			StreamURL = "http://"+ availableTuner.ipAddress +":5004/tuner"+ availableTuner.tunerId +"/v" + GuideNumber
+			Log.Debug("Using StreamURL: %s" % StreamURL)
+		else:
+			Log.Error("Unable to find available tuner!")
 		
 		Thumb = R(filename)
 		
@@ -212,6 +260,7 @@ def SubMenu(title,xpath,program_info):
 			
 		#PROGRAM INFO END
 		
+		Log.Debug("oc.add(CreateVO(url=%s, title=%s, tagline=%s, summary=%s, thumb=%s))" % (StreamURL,Title,ep_info,ep_info+ep_next,Thumb))
 		oc.add(CreateVO(url=StreamURL, title=Title, tagline=ep_info, summary=ep_info+ep_next, thumb=Thumb))
 	return oc
 	
@@ -386,3 +435,4 @@ def makeSafeFilename(inputFilename):
 	except:
 		return ""
 	pass
+

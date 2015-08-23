@@ -3,8 +3,14 @@
 		"id": "hdhomerun_ip",
 		"type": "text",
 		"label": "HDHomeRun IP",
-		"default": "192.168.1.111"
+		"default": "172.16.1.40"
 	},
+        {
+                "id": "hdhomerun_dual_tuner_ip_list",
+                "type": "text",
+                "label": "HDHomeRun IP List",
+                "default": "172.16.1.40 172.16.1.34"
+        },
 	{
 		"id": "hdhomerun_tuner",
 		"type": "enum",
